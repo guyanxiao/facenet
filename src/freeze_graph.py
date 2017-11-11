@@ -33,40 +33,41 @@ import argparse
 import os
 import sys
 import facenet
-from six.moves import xrange
 
 def main(args):
+
     with tf.Graph().as_default():
         with tf.Session() as sess:
-            # Load the model metagraph and checkpoint
-            print('Model directory: %s' % args.model_dir)
-            meta_file, ckpt_file = facenet.get_model_filenames(os.path.expanduser(args.model_dir))
+                with tf.device('/cpu:0'):
+                    # Load the model metagraph and checkpoint
+                    print('Model directory: %s' % args.model_dir)
+                    meta_file, ckpt_file = facenet.get_model_filenames(os.path.expanduser(args.model_dir))
+                        
+                    print('Metagraph file: %s' % meta_file)
+                    print('Checkpoint file: %s' % ckpt_file)
             
-            print('Metagraph file: %s' % meta_file)
-            print('Checkpoint file: %s' % ckpt_file)
-
-            model_dir_exp = os.path.expanduser(args.model_dir)
-            saver = tf.train.import_meta_graph(os.path.join(model_dir_exp, meta_file), clear_devices=True)
-            tf.get_default_session().run(tf.global_variables_initializer())
-            tf.get_default_session().run(tf.local_variables_initializer())
-            saver.restore(tf.get_default_session(), os.path.join(model_dir_exp, ckpt_file))
-            
-            # Retrieve the protobuf graph definition and fix the batch norm nodes
-            input_graph_def = sess.graph.as_graph_def()
-            
-            # Freeze the graph def
-            output_graph_def = freeze_graph_def(sess, input_graph_def, 'embeddings')
-
-        # Serialize and dump the output graph to the filesystem
+                    model_dir_exp = os.path.expanduser(args.model_dir)
+                    saver = tf.train.import_meta_graph(os.path.join(model_dir_exp, meta_file), clear_devices=True)
+                    tf.get_default_session().run(tf.global_variables_initializer())
+                    tf.get_default_session().run(tf.local_variables_initializer())
+                    saver.restore(tf.get_default_session(), os.path.join(model_dir_exp, ckpt_file))
+                        
+                    # Retrieve the protobuf graph definition and fix the batch norm nodes
+                    input_graph_def = sess.graph.as_graph_def()
+                        
+                    # Freeze the graph def
+                    output_graph_def = freeze_graph_def(sess, input_graph_def, 'embeddings')
+    
+            # Serialize and dump the output graph to the filesystem
         with tf.gfile.GFile(args.output_file, 'wb') as f:
             f.write(output_graph_def.SerializeToString())
         print("%d ops in the final graph: %s" % (len(output_graph_def.node), args.output_file))
-        
+            
 def freeze_graph_def(sess, input_graph_def, output_node_names):
     for node in input_graph_def.node:
         if node.op == 'RefSwitch':
             node.op = 'Switch'
-            for index in xrange(len(node.input)):
+            for index in range(len(node.input)):
                 if 'moving_' in node.input[index]:
                     node.input[index] = node.input[index] + '/read'
         elif node.op == 'AssignSub':
@@ -79,7 +80,7 @@ def freeze_graph_def(sess, input_graph_def, output_node_names):
     # Get the list of important nodes
     whitelist_names = []
     for node in input_graph_def.node:
-        if (node.name.startswith('InceptionResnetV1') or node.name.startswith('embeddings') or 
+        if (node.name.startswith('InceptionResnetV2') or node.name.startswith('embeddings') or 
                 node.name.startswith('phase_train') or node.name.startswith('Bottleneck') or node.name.startswith('Logits')):
             whitelist_names.append(node.name)
 

@@ -36,6 +36,8 @@ def evaluate(embeddings, actual_issame, nrof_folds=10):
     thresholds = np.arange(0, 4, 0.01)
     embeddings1 = embeddings[0::2]
     embeddings2 = embeddings[1::2]
+    np.savetxt("E:\\Study\\facenet-master\\facenet-master\\data\\lfw_embeddings1.txt",embeddings1, fmt="%.2f " * len(embeddings1[0]))
+    np.savetxt("E:\\Study\\facenet-master\\facenet-master\\data\\lfw_embeddings2.txt",embeddings2, fmt="%.2f " * len(embeddings2[0]))
     tpr, fpr, accuracy = facenet.calculate_roc(thresholds, embeddings1, embeddings2,
         np.asarray(actual_issame), nrof_folds=nrof_folds)
     thresholds = np.arange(0, 4, 0.001)
@@ -61,6 +63,7 @@ def get_paths(lfw_dir, pairs, file_ext):
             issame_list.append(issame)
         else:
             nrof_skipped_pairs += 1
+            print(path0)
     if nrof_skipped_pairs>0:
         print('Skipped %d image pairs' % nrof_skipped_pairs)
     

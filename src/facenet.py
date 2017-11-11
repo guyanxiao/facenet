@@ -32,6 +32,7 @@ from subprocess import Popen, PIPE
 import tensorflow as tf
 from tensorflow.python.framework import ops
 import numpy as np
+from numpy import linalg
 from scipy import misc
 from sklearn.model_selection import KFold
 from scipy import interpolate
@@ -39,7 +40,6 @@ from tensorflow.python.training import training
 import random
 import re
 from tensorflow.python.platform import gfile
-from six import iteritems
 
 def triplet_loss(anchor, positive, negative, alpha):
     """Calculate the triplet loss according to the FaceNet paper
@@ -74,6 +74,20 @@ def decov_loss(xs):
     loss = 0.5*(corr_frob_sqr - corr_diag_sqr)
     return loss 
   
+#def center_loss(features, label, alfa, nrof_classes):
+#    """Center loss based on the paper "A Discriminative Feature Learning Approach for Deep Face Recognition"
+#       (http://ydwen.github.io/papers/WenECCV16.pdf)
+#    """
+#    nrof_features = features.get_shape()[1]
+#    centers = tf.get_variable('centers', [nrof_classes, nrof_features], dtype=tf.float32,
+#        initializer=tf.constant_initializer(0), trainable=False)
+#    label = tf.reshape(label, [-1])
+#    centers_batch = tf.gather(centers, label)
+#    diff = (1 - alfa) * (centers_batch - features)
+#    centers = tf.scatter_sub(centers, label, diff)
+#    loss = tf.reduce_mean(tf.square(features - centers_batch))
+#    return loss, centers
+
 def center_loss(features, label, alfa, nrof_classes):
     """Center loss based on the paper "A Discriminative Feature Learning Approach for Deep Face Recognition"
        (http://ydwen.github.io/papers/WenECCV16.pdf)
@@ -85,9 +99,10 @@ def center_loss(features, label, alfa, nrof_classes):
     centers_batch = tf.gather(centers, label)
     diff = (1 - alfa) * (centers_batch - features)
     centers = tf.scatter_sub(centers, label, diff)
-    loss = tf.reduce_mean(tf.square(features - centers_batch))
+    with tf.control_dependencies([centers]):
+        loss = tf.reduce_mean(tf.square(features - centers_batch))
     return loss, centers
-
+	
 def get_image_paths_and_labels(dataset):
     image_paths_flat = []
     labels_flat = []
@@ -423,6 +438,13 @@ def calculate_roc(thresholds, embeddings1, embeddings2, actual_issame, nrof_fold
     dist = np.sum(np.square(diff),1)
     indices = np.arange(nrof_pairs)
     
+    num = np.sum(embeddings1*embeddings2,axis=1)
+    denom=linalg.norm(embeddings1,axis=1)*linalg.norm(embeddings2,axis=1)
+    cos = (num/denom)*100
+    np.savetxt("E:\\Study\\facenet-master\\facenet-master\\data\\lfw_result.txt",cos, fmt="%f")
+    np.savetxt ("E:\\Study\\facenet-master\\facenet-master\\data\\lfw_embeddings1.txt", embeddings1, fmt="%.2f")
+    np.savetxt ("E:\\Study\\facenet-master\\facenet-master\\data\\lfw_embeddings2.txt", embeddings2, fmt="%.2f")
+    
     for fold_idx, (train_set, test_set) in enumerate(k_fold.split(indices)):
         
         # Find the best threshold for the fold
@@ -540,5 +562,5 @@ def put_images_on_grid(images, shape=(16,8)):
 
 def write_arguments_to_file(args, filename):
     with open(filename, 'w') as f:
-        for key, value in iteritems(vars(args)):
+        for key, value in vars(args).items():
             f.write('%s: %s\n' % (key, str(value)))

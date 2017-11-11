@@ -29,6 +29,9 @@ from __future__ import print_function
 
 from datetime import datetime
 import os.path
+import os
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"  # see issue #152
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 import time
 import sys
 import tensorflow as tf
@@ -40,8 +43,6 @@ import facenet
 import lfw
 
 from tensorflow.python.ops import data_flow_ops
-
-from six.moves import xrange
 
 def main(args):
   
@@ -151,7 +152,7 @@ def main(args):
             learning_rate, args.moving_average_decay, tf.global_variables())
         
         # Create a saver
-        saver = tf.train.Saver(tf.trainable_variables(), max_to_keep=3)
+        saver = tf.train.Saver(tf.trainable_variables(), max_to_keep=10)
 
         # Build the summary operation based on the TF collection of Summaries.
         summary_op = tf.summary.merge_all()
@@ -249,7 +250,11 @@ def train(args, sess, dataset, epoch, image_paths_placeholder, labels_placeholde
             start_time = time.time()
             batch_size = min(nrof_examples-i*args.batch_size, args.batch_size)
             feed_dict = {batch_size_placeholder: batch_size, learning_rate_placeholder: lr, phase_train_placeholder: True}
-            err, _, step, emb, lab = sess.run([loss, train_op, global_step, embeddings, labels_batch], feed_dict=feed_dict)
+            if (i % 100 == 0):
+                err, _, step, emb, lab, summary_str = sess.run([loss, train_op, global_step, embeddings, labels_batch, summary_op], feed_dict=feed_dict)
+                summary_writer.add_summary(summary_str, global_step=step)
+            else:
+                err, _, step, emb, lab = sess.run([loss, train_op, global_step, embeddings, labels_batch], feed_dict=feed_dict)
             emb_array[lab,:] = emb
             loss_array[i] = err
             duration = time.time() - start_time
@@ -263,6 +268,7 @@ def train(args, sess, dataset, epoch, image_paths_placeholder, labels_placeholde
         summary = tf.Summary()
         #pylint: disable=maybe-no-member
         summary.value.add(tag='time/selection', simple_value=selection_time)
+        summary.value.add(tag='time/total', simple_value=train_time)
         summary_writer.add_summary(summary, step)
     return step
   
@@ -281,17 +287,17 @@ def select_triplets(embeddings, nrof_images_per_class, image_paths, people_per_b
     #  latter is a form of hard-negative mining, but it is not as aggressive (and much cheaper) than
     #  choosing the maximally violating example, as often done in structured output learning.
 
-    for i in xrange(people_per_batch):
+    for i in range(people_per_batch):
         nrof_images = int(nrof_images_per_class[i])
-        for j in xrange(1,nrof_images):
+        for j in range(1,nrof_images):
             a_idx = emb_start_idx + j - 1
             neg_dists_sqr = np.sum(np.square(embeddings[a_idx] - embeddings), 1)
-            for pair in xrange(j, nrof_images): # For every possible positive pair.
+            for pair in range(j, nrof_images): # For every possible positive pair.
                 p_idx = emb_start_idx + pair
                 pos_dist_sqr = np.sum(np.square(embeddings[a_idx]-embeddings[p_idx]))
                 neg_dists_sqr[emb_start_idx:emb_start_idx+nrof_images] = np.NaN
-                #all_neg = np.where(np.logical_and(neg_dists_sqr-pos_dist_sqr<alpha, pos_dist_sqr<neg_dists_sqr))[0]  # FaceNet selection
-                all_neg = np.where(neg_dists_sqr-pos_dist_sqr<alpha)[0] # VGG Face selecction
+                all_neg = np.where(np.logical_and(neg_dists_sqr-pos_dist_sqr<alpha, pos_dist_sqr<neg_dists_sqr))[0]  # FaceNet selection
+                #all_neg = np.where(neg_dists_sqr-pos_dist_sqr<alpha)[0] # VGG Face selecction
                 nrof_random_negs = all_neg.shape[0]
                 if nrof_random_negs>0:
                     rnd_idx = np.random.randint(nrof_random_negs)
@@ -351,7 +357,7 @@ def evaluate(sess, image_paths, embeddings, labels_batch, image_paths_placeholde
     emb_array = np.zeros((nrof_images, embedding_size))
     nrof_batches = int(np.ceil(nrof_images / batch_size))
     label_check_array = np.zeros((nrof_images,))
-    for i in xrange(nrof_batches):
+    for i in range(nrof_batches):
         batch_size = min(nrof_images-i*batch_size, batch_size)
         emb, lab = sess.run([embeddings, labels_batch], feed_dict={batch_size_placeholder: batch_size,
             learning_rate_placeholder: 0.0, phase_train_placeholder: False})
